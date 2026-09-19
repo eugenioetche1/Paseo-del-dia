@@ -1,0 +1,8 @@
+{
+  "name": "paseo-del-dia",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

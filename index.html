@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Paseo del día</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="hero">
+  <div class="idioma-switch" role="group" aria-label="Idioma / Sprache">
+    <button type="button" class="idioma-boton" data-lang="es" aria-pressed="true">Español</button>
+    <button type="button" class="idioma-boton" data-lang="de" aria-pressed="false">Deutsch</button>
+  </div>
+  <svg class="hero__trail" viewBox="0 0 200 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M2 30 Q 40 5, 70 25 T 140 15 T 198 28" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="1 9"/>
+    <circle cx="2" cy="30" r="3" fill="currentColor"/>
+    <circle cx="198" cy="28" r="3" fill="currentColor"/>
+  </svg>
+  <h1 data-i18n="tituloHero">¿Adónde salimos hoy?</h1>
+  <p data-i18n="subtituloHero">Contanos qué tenés ganas de hacer y armamos algunas ideas para tu paseo.</p>
+</header>
+
+<main>
+  <form id="form-filtros" class="tarjeta">
+    <div class="campo">
+      <label for="ciudad" data-i18n="labelCiudad">Desde dónde salís</label>
+      <input type="text" id="ciudad" name="ciudad" data-i18n-placeholder="placeholderCiudad" placeholder="Ej: Nordhorn, Alemania" required />
+    </div>
+
+    <div class="campo">
+      <label for="distancia"><span data-i18n="labelDistancia">Distancia máxima a recorrer</span>: <span id="distancia-valor">20</span> km</label>
+      <input type="range" id="distancia" name="distancia" min="1" max="150" value="20" />
+    </div>
+
+    <div class="campo">
+      <label for="palabras" data-i18n="labelPalabras">¿Qué tenés ganas de hacer?</label>
+      <input type="text" id="palabras" name="palabras" data-i18n-placeholder="placeholderPalabras" placeholder="Ej: parques, historia, tranquilidad, bosques" required />
+      <small data-i18n="ayudaPalabras">Separá las ideas con comas — nos sirven de guía para buscar.</small>
+    </div>
+
+    <div class="campo campo--fila">
+      <div>
+        <label for="duracion" data-i18n="labelDuracion">Duración del paseo</label>
+        <select id="duracion" name="duracion">
+          <option value="rapida" data-i18n="opcionRapida">Una hora, algo rápido</option>
+          <option value="media" selected data-i18n="opcionMedia">Media jornada</option>
+          <option value="completa" data-i18n="opcionCompleta">El día completo</option>
+        </select>
+      </div>
+      <div>
+        <label for="personas" data-i18n="labelPersonas">¿Cuántos van?</label>
+        <input type="number" id="personas" name="personas" min="1" value="2" />
+      </div>
+    </div>
+
+    <div class="campo">
+      <label for="edades" data-i18n="labelEdades">Edades de los niños (si van)</label>
+      <input type="text" id="edades" name="edades" data-i18n-placeholder="placeholderEdades" placeholder="Ej: 4 y 8 años — dejalo vacío si no hay niños" />
+    </div>
+
+    <div class="campo campo--check">
+      <input type="checkbox" id="techo" name="techo" />
+      <label for="techo" data-i18n="labelTecho">Priorizar lugares bajo techo (por si el clima no ayuda)</label>
+    </div>
+
+    <button type="submit" class="boton" data-i18n="botonBuscar">Buscar ideas</button>
+  </form>
+
+  <p id="mensaje-estado" class="mensaje-estado" hidden></p>
+
+  <section id="clima-actual" class="clima" hidden></section>
+
+  <section id="resultados" class="resultados" hidden>
+    <h2 data-i18n="tituloResultados">Elegí las que te interesen</h2>
+    <div id="lista-resultados" class="lista-resultados"></div>
+    <button id="btn-continuar" class="boton boton--secundario" disabled data-i18n="botonContinuar">Continuar con las seleccionadas</button>
+  </section>
+
+  <section id="detalle" class="detalle" hidden>
+    <h2 data-i18n="tituloDetalle">Un poco más de info</h2>
+    <div id="lista-detalle" class="lista-detalle"></div>
+    <button id="btn-nueva-busqueda" class="boton boton--texto" data-i18n="botonNuevaBusqueda">Empezar una búsqueda nueva</button>
+  </section>
+</main>
+
+<footer>
+  <p data-i18n="footerTexto">Los datos de lugares y valoraciones vienen de Google Maps. Las distancias y tiempos de viaje son estimados.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
