@@ -82,6 +82,14 @@ module.exports = async function handler(req, res) {
 
     const searchData = await searchResp.json();
 
+    if (!searchResp.ok || searchData.error) {
+      console.error("Error de Places API:", JSON.stringify(searchData));
+      res.status(502).json({
+        error: `Google respondió con un error: ${searchData.error?.message || searchResp.status}`,
+      });
+      return;
+    }
+
     if (!searchData.places || searchData.places.length === 0) {
       res.status(200).json({ origen, clima: null, lugares: [] });
       return;
