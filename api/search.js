@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
       if (duracionTexto) textoBusqueda += `, un paseo ${duracionTexto}`;
     }
 
-    const radioMetros = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 200) * 1000;
+    const radioMetros = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 50) * 1000;
 
     const searchResp = await fetch("https://places.googleapis.com/v1/places:searchText", {
       method: "POST",
