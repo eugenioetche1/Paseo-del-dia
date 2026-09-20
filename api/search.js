@@ -1,4 +1,4 @@
-const { obtenerClima } = require("../lib/helpers");
+const { obtenerClima, obtenerResumenWikipedia } = require("../lib/helpers");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -57,6 +57,7 @@ module.exports = async function handler(req, res) {
       if (duracionTexto) textoBusqueda += `, un paseo ${duracionTexto}`;
     }
 
+    // Google limita el radio de "locationBias" a 50.000 metros (50 km) como máximo
     const radioMetros = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 50) * 1000;
 
     const searchResp = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -65,7 +66,7 @@ module.exports = async function handler(req, res) {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": API_KEY,
         "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.types,places.googleMapsUri",
+          "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.primaryTypeDisplayName,places.googleMapsUri",
       },
       body: JSON.stringify({
         textQuery: textoBusqueda,
@@ -101,17 +102,38 @@ module.exports = async function handler(req, res) {
       ? { temperatura: climaRaw.temperature_2m, codigo: climaRaw.weather_code }
       : null;
 
-    // 4) Armar la respuesta con una reseña corta por lugar
-    const lugares = searchData.places.map((p) => ({
-      id: p.id,
-      nombre: p.displayName?.text || "Sin nombre",
-      direccion: p.formattedAddress || "",
-      resena: p.editorialSummary?.text || (p.types ? p.types.slice(0, 3).join(", ").replace(/_/g, " ") : ""),
-      rating: p.rating || null,
-      totalReseñas: p.userRatingCount || 0,
-      lat: p.location?.latitude,
-      lng: p.location?.longitude,
-    }));
+    // 4) Armar la respuesta con una reseña corta por lugar (con respaldo de Wikipedia si Google no tiene resumen)
+    const lugares = await Promise.all(
+      searchData.places.map(async (p) => {
+        let resena = p.editorialSummary?.text || null;
+
+        if (!resena) {
+          resena = await obtenerResumenWikipedia(p.displayName?.text || "", idiomaCodigo);
+        }
+
+        if (!resena) {
+          const categoria = p.primaryTypeDisplayName?.text;
+          resena = categoria
+            ? idiomaCodigo === "de"
+              ? `${categoria} in der Nähe.`
+              : `${categoria} en la zona.`
+            : idiomaCodigo === "de"
+            ? "Ort von Interesse in der Nähe."
+            : "Punto de interés en la zona.";
+        }
+
+        return {
+          id: p.id,
+          nombre: p.displayName?.text || "Sin nombre",
+          direccion: p.formattedAddress || "",
+          resena,
+          rating: p.rating || null,
+          totalReseñas: p.userRatingCount || 0,
+          lat: p.location?.latitude,
+          lng: p.location?.longitude,
+        };
+      })
+    );
 
     res.status(200).json({ origen, clima, lugares });
   } catch (err) {

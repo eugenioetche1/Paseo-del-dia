@@ -1,4 +1,4 @@
-const { distanciaKm, estimarViaje, obtenerClima } = require("../lib/helpers");
+const { distanciaKm, estimarViaje, obtenerClima, obtenerResumenWikipedia } = require("../lib/helpers");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
           headers: {
             "X-Goog-Api-Key": API_KEY,
             "X-Goog-FieldMask":
-              "id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,currentOpeningHours,googleMapsUri,editorialSummary",
+              "id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,currentOpeningHours,googleMapsUri,editorialSummary,primaryTypeDisplayName",
           },
         });
         const p = await r.json();
@@ -48,11 +48,24 @@ module.exports = async function handler(req, res) {
           ? { temperatura: climaRaw.temperature_2m, codigo: climaRaw.weather_code }
           : null;
 
+        let resena = p.editorialSummary?.text || null;
+        if (!resena) {
+          resena = await obtenerResumenWikipedia(p.displayName?.text || "", idiomaCodigo);
+        }
+        if (!resena) {
+          const categoria = p.primaryTypeDisplayName?.text;
+          resena = categoria
+            ? idiomaCodigo === "de"
+              ? `${categoria} in der Nähe.`
+              : `${categoria} en la zona.`
+            : "";
+        }
+
         return {
           id,
           nombre: p.displayName?.text || "Sin nombre",
           direccion: p.formattedAddress || "",
-          resena: p.editorialSummary?.text || "",
+          resena,
           rating: p.rating || null,
           totalReseñas: p.userRatingCount || 0,
           priceLevel: p.priceLevel || null,
