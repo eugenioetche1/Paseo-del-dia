@@ -1,4 +1,4 @@
-const { obtenerClima, obtenerResumenWikipedia } = require("../lib/helpers");
+const { obtenerClima, obtenerResumenWikipedia, distanciaKm } = require("../lib/helpers");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -57,8 +57,13 @@ module.exports = async function handler(req, res) {
       if (duracionTexto) textoBusqueda += `, un paseo ${duracionTexto}`;
     }
 
-    // Google limita el radio de "locationBias" a 50.000 metros (50 km) como máximo
-    const radioMetros = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 50) * 1000;
+    // Google limita el radio a 50 km como máximo
+    const limiteKm = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 50);
+
+    // Armamos un rectángulo alrededor del origen para restringir la búsqueda de verdad
+    // (locationBias es solo una sugerencia; locationRestriction es un límite real).
+    const latDelta = limiteKm / 111;
+    const lngDelta = limiteKm / (111 * Math.cos((origen.lat * Math.PI) / 180));
 
     const searchResp = await fetch("https://places.googleapis.com/v1/places:searchText", {
       method: "POST",
@@ -72,10 +77,10 @@ module.exports = async function handler(req, res) {
         textQuery: textoBusqueda,
         languageCode: idiomaCodigo,
         maxResultCount: 10,
-        locationBias: {
-          circle: {
-            center: { latitude: origen.lat, longitude: origen.lng },
-            radius: radioMetros,
+        locationRestriction: {
+          rectangle: {
+            low: { latitude: origen.lat - latDelta, longitude: origen.lng - lngDelta },
+            high: { latitude: origen.lat + latDelta, longitude: origen.lng + lngDelta },
           },
         },
       }),
@@ -91,7 +96,14 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    if (!searchData.places || searchData.places.length === 0) {
+    // Filtro extra: por si el rectángulo dejó pasar algo en una esquina más lejana que el radio real
+    const placesFiltrados = (searchData.places || []).filter((p) => {
+      if (!p.location) return false;
+      const d = distanciaKm(origen.lat, origen.lng, p.location.latitude, p.location.longitude);
+      return d <= limiteKm;
+    });
+
+    if (placesFiltrados.length === 0) {
       res.status(200).json({ origen, clima: null, lugares: [] });
       return;
     }
@@ -104,7 +116,7 @@ module.exports = async function handler(req, res) {
 
     // 4) Armar la respuesta con una reseña corta por lugar (con respaldo de Wikipedia si Google no tiene resumen)
     const lugares = await Promise.all(
-      searchData.places.map(async (p) => {
+      placesFiltrados.map(async (p) => {
         let resena = p.editorialSummary?.text || null;
 
         if (!resena) {
