@@ -13,8 +13,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { ciudad, distanciaMaxKm, palabrasClave, duracion, personas, edadesNinos, priorizarTecho, idioma } =
-      req.body || {};
+    const { ciudad, distanciaMaxKm, palabrasClave, idioma } = req.body || {};
 
     if (!ciudad || !palabrasClave) {
       res.status(400).json({ error: "Faltan datos: ciudad y palabras clave son obligatorios" });
@@ -22,12 +21,6 @@ module.exports = async function handler(req, res) {
     }
 
     const idiomaCodigo = idioma === "de" ? "de" : "es";
-
-    const DURACION_TEXTOS = {
-      es: { rapida: "de una hora", media: "de media jornada", completa: "de el día completo" },
-      de: { rapida: "für eine Stunde", media: "für einen halben Tag", completa: "für den ganzen Tag" },
-    };
-    const duracionTexto = DURACION_TEXTOS[idiomaCodigo][duracion] || "";
 
     // 1) Geocodificar la ciudad para tener un centro de búsqueda
     const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
@@ -43,61 +36,66 @@ module.exports = async function handler(req, res) {
 
     const origen = geoData.results[0].geometry.location; // {lat, lng}
 
-    // 2) Armar el texto de búsqueda a partir de los filtros (en el idioma elegido)
-    let textoBusqueda;
-    if (idiomaCodigo === "de") {
-      textoBusqueda = `${palabrasClave} in der Nähe von ${ciudad}`;
-      if (edadesNinos) textoBusqueda += `, geeignet für Kinder im Alter von ${edadesNinos}`;
-      if (priorizarTecho) textoBusqueda += `, Aktivitäten drinnen`;
-      if (duracionTexto) textoBusqueda += `, ein Ausflug ${duracionTexto}`;
-    } else {
-      textoBusqueda = `${palabrasClave} cerca de ${ciudad}`;
-      if (edadesNinos) textoBusqueda += `, apto para niños de ${edadesNinos} años`;
-      if (priorizarTecho) textoBusqueda += `, actividades bajo techo`;
-      if (duracionTexto) textoBusqueda += `, un paseo ${duracionTexto}`;
-    }
-
     // Google limita el radio a 50 km como máximo
     const limiteKm = Math.min(Math.max(Number(distanciaMaxKm) || 20, 1), 50);
 
-    // Armamos un rectángulo alrededor del origen para restringir la búsqueda de verdad
-    // (locationBias es solo una sugerencia; locationRestriction es un límite real).
+    // Rectángulo real alrededor del origen (locationRestriction, no solo una sugerencia)
     const latDelta = limiteKm / 111;
     const lngDelta = limiteKm / (111 * Math.cos((origen.lat * Math.PI) / 180));
+    const rectangulo = {
+      low: { latitude: origen.lat - latDelta, longitude: origen.lng - lngDelta },
+      high: { latitude: origen.lat + latDelta, longitude: origen.lng + lngDelta },
+    };
 
-    const searchResp = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": API_KEY,
-        "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.primaryTypeDisplayName,places.googleMapsUri",
-      },
-      body: JSON.stringify({
-        textQuery: textoBusqueda,
-        languageCode: idiomaCodigo,
-        maxResultCount: 10,
-        locationRestriction: {
-          rectangle: {
-            low: { latitude: origen.lat - latDelta, longitude: origen.lng - lngDelta },
-            high: { latitude: origen.lat + latDelta, longitude: origen.lng + lngDelta },
-          },
+    // 2) Partimos las palabras clave y buscamos CADA UNA por separado
+    //    (igual que cuando vos escribís "museos" y después "parques" en Google Maps)
+    const palabras = palabrasClave
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .slice(0, 5); // tope de 5 búsquedas para no disparar el consumo de la API
+
+    const buscarUnaPalabra = async (palabra) => {
+      const textoBusqueda =
+        idiomaCodigo === "de" ? `${palabra} in ${ciudad}` : `${palabra} en ${ciudad}`;
+
+      const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": API_KEY,
+          "X-Goog-FieldMask":
+            "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.editorialSummary,places.primaryTypeDisplayName,places.googleMapsUri",
         },
-      }),
+        body: JSON.stringify({
+          textQuery: textoBusqueda,
+          languageCode: idiomaCodigo,
+          pageSize: 6,
+          rankPreference: "DISTANCE",
+          locationRestriction: { rectangle: rectangulo },
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        console.error(`Error de Places API buscando "${palabra}":`, JSON.stringify(data));
+        return [];
+      }
+      return data.places || [];
+    };
+
+    const resultadosPorPalabra = await Promise.all(palabras.map(buscarUnaPalabra));
+    const todosLosPlaces = resultadosPorPalabra.flat();
+
+    // Sacamos duplicados (el mismo lugar puede aparecer en más de una búsqueda)
+    const vistos = new Set();
+    const placesUnicos = todosLosPlaces.filter((p) => {
+      if (vistos.has(p.id)) return false;
+      vistos.add(p.id);
+      return true;
     });
 
-    const searchData = await searchResp.json();
-
-    if (!searchResp.ok || searchData.error) {
-      console.error("Error de Places API:", JSON.stringify(searchData));
-      res.status(502).json({
-        error: `Google respondió con un error: ${searchData.error?.message || searchResp.status}`,
-      });
-      return;
-    }
-
-    // Filtro extra: por si el rectángulo dejó pasar algo en una esquina más lejana que el radio real
-    const placesFiltrados = (searchData.places || []).filter((p) => {
+    // Filtro extra: por si algo se coló más lejos del radio real
+    const placesFiltrados = placesUnicos.filter((p) => {
       if (!p.location) return false;
       const d = distanciaKm(origen.lat, origen.lng, p.location.latitude, p.location.longitude);
       return d <= limiteKm;
@@ -116,7 +114,7 @@ module.exports = async function handler(req, res) {
 
     // 4) Armar la respuesta con una reseña corta por lugar (con respaldo de Wikipedia si Google no tiene resumen)
     const lugares = await Promise.all(
-      placesFiltrados.map(async (p) => {
+      placesFiltrados.slice(0, 12).map(async (p) => {
         let resena = p.editorialSummary?.text || null;
 
         if (!resena) {
